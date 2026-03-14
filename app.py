@@ -277,14 +277,23 @@ y_train = train.price.copy()
 
 def get_or_create_preprocessor():
 	"""
-	Load a previously saved preprocessor, or fit & save a new one if the file
-	is missing or corrupted (e.g. older schema / failed pickle).
+	Load a previously saved preprocessor, or fit & save a new one if:
+	- the file is missing
+	- loading fails, or
+	- the loaded object cannot successfully run ``transform`` (e.g. it was
+	  created with an older, incompatible scikit-learn version and is missing
+	  attributes like ``_fill_dtype`` on imputers).
 	"""
 	if os.path.exists("preprocessor.joblib"):
 		try:
-			return joblib.load("preprocessor.joblib")
+			candidate = joblib.load("preprocessor.joblib")
+			# Quick smoke test to ensure the loaded pipeline is compatible
+			# with the current sklearn / feature_engine versions.
+			_ = candidate.transform(X_train.iloc[:1].copy())
+			return candidate
 		except Exception:
-			# fall through to refit if loading fails for any reason
+			# Any problem (load error, AttributeError during transform, etc.)
+			# -> refit from scratch with the current environment.
 			pass
 
 	preprocessor.fit(X_train, y_train)
